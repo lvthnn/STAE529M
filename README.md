@@ -1,2 +1,2 @@
 # STAE529M
-Bayesian Data Analysis
+Source codes for assignments in STÆ529M Bayesian Data Analysis.
