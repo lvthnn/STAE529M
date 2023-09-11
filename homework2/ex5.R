@@ -1,3 +1,5 @@
+# Exercise 2.4.5
+
 # Method (*)
 
 b_grid <- seq(0.01, 1, by = 0.00001)
