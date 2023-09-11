@@ -1,3 +1,5 @@
+# Exercise 2.4.4
+
 # Draw the posterior distribution
 m <- 5
 Y <- 10
