@@ -61,4 +61,4 @@ dev.off()
 # so this suggests effectiveness 
 
 # however jags returns result slightly different result with 95% cs including zero, so
-# the analysis seems to be sensitive to prior
+# the analysis seems to be sensitive to pror
