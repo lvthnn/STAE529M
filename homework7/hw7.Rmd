@@ -1,0 +1,278 @@
+---
+title: "STÆ529M Homework 7"
+author: "Kári Hlynsson"
+output: html_document
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages
+
+```{r}
+library(rjags)
+library(latex2exp)
+library(knitr)
+```
+
+## Exercise 1
+
+Fit model $\mathcal M_2$ to the `airquality` data from the previous problem, and use posterior predictive checks to verify that the model fits well. If you find model misspecification, suggest (but do not fit) alternatives.
+
+### Solution
+
+The models are
+
+$$
+\begin{align*}
+    &\mathcal M_1 : \mathrm{(ozone)}_i \sim \mathrm{Normal}\big(\beta_1 + \beta_2 (\mathrm{solar.R})_i, \sigma^2\big) \\
+    &\mathcal M_2: \mathrm{(ozone)}_i \sim \mathrm{Normal}\big(\beta_1 + \beta_2 \mathrm{(solar.R)}_i + \beta_3 \mathrm{(temp)}_i + \beta_4 \mathrm{(wind)}_i, \sigma^2\big).
+\end{align*}
+$$
+
+I changed the coefficients in front of the covariates since there seems to be a typo in the exercise and the authors put $\beta_2$ on both covariates but treat them as separate coefficients in the solution to exercise 1.
+
+Load the data set and and set up the model matrix $\mathbf X_2$:
+
+```{r}
+data(airquality)
+```
+
+Model matrix and setup:
+
+```{r}
+Y <- airquality$Ozone
+
+solar <- scale(airquality$Solar.R)
+temp  <- scale(airquality$Temp)
+wind  <- scale(airquality$Wind)
+
+X           <- cbind(1, solar, temp, wind)
+colnames(X) <- c("(Intercept)", "solar", "temp", "wind")
+
+miss_mask <- is.na(Y + rowSums(X))
+
+X <- X[!miss_mask,]
+Y <- Y[!miss_mask]
+
+n <- nrow(X)
+p <- ncol(X)
+
+data <- list(X = X, Y = Y, n = n, p = p)
+```
+
+We have no information on the $\beta_j$'s and thus it is normal to place an uninformative gaussian prior on them. We will also allow the model to tune the precision $\tau^2 = 1/\sigma^2$ of the likelihood, since it is conjugate and yields a normal posterior. Prepare the JAGS model:
+
+```{r}
+init_airq <- textConnection("model{
+  for (i in 1:n) {
+    Y[i] ~ dnorm(inprod(X[i,], beta), tau)
+  }
+  
+  for (j in 1:p) {
+    beta[j] ~ dnorm(0, 0.0001)
+  }
+  
+  tau ~ dgamma(0.1, 0.1)
+  
+  for (i in 1:n) {
+    Yp[i] ~ dnorm(inprod(X[i,], beta), tau)
+  }
+  
+  D[1] <- min(Yp)
+  D[2] <- max(Yp)
+  D[3] <- max(Yp) - min(Yp)
+  D[4] <- mean(Yp)
+  D[5] <- sd(Yp)
+}")
+
+model_airq <- jags.model(init_airq, data = data, n.chains = 2,
+                         quiet = TRUE)
+
+update(model_airq, n.iter = 1e+4, progress.bar = "none")
+
+samples_airq <- coda.samples(model_airq, variable.names = c("beta", "D", "Yp"),
+                             n.iter = 2e+4, progress.bar = "none")
+
+sum_airq <- summary(samples_airq)
+
+D2 <- samples_airq[[1]][,paste0("D[", 1:5, "]")]
+D0 <- c(min(Y), max(Y), max(Y) - min(Y), mean(Y), sd(Y))
+ss_names <- c("min", "max", "range", "mean", "sd")
+pvals <- rep(0, 5); names(pvals) <- ss_names
+
+library(latex2exp)
+
+par(mfrow = c(2,3))
+for (i in 1:5) {
+  plot(density(D2[,i]), xlim = range(D2[,i], D0[i]),
+       main = NA, xlab = TeX(paste0(ss_names[i], "($Y_p$)")))
+  abline(v = D0[i], lty = 2)
+  
+  pvals[i] <- mean(D2[,i] > D0[i])
+}
+```
+
+Let's take a look at the $p$-values:
+
+```{r}
+pvals
+```
+
+The minimum and maximum are near zero, indicating that the model does not fit the scale of the data well. However, the range, mean and standard deviation fit well, indicating that while the model may not be problematic, scaling the data and/or treating outliers might help. Below is a plot that shows the observed values against the fitted ones:
+
+```{r}
+Yp <- sum_airq$statistics[paste0("Yp[", 1:111, "]"), 1]
+
+# normal model
+lin <- lm(Y ~ X[,-1])
+
+plot(Yp, Y, xlab = TeX("$Y_p$"))
+abline(a = 0, b = 1, lty = 2)
+```
+
+It seems the model underfits the data at the extremes. This may because of the scale of the reponse, shown in the below histogram:
+
+```{r}
+hist(Y)
+```
+
+Log transforming the response is a potential response to the faults uncovered in the posterior predictive checks. Aside from this, the model is good. The plot below shows :
+
+```{r}
+# residual plots for normal model
+par(mfrow = c(2, 2), font.main = 1)
+plot(lin$resid, ylab = "Residuals", main = "Normal model")
+abline(h = 0, lty = 2)
+plot(hat(X), ylab = "Leverages", main = "Normal model")
+abline(h = 2 * p / n, lty = 2)
+
+# linear model with log-transformed response
+lin <- lm(log(Y) ~ X[,-1])
+pred_lin <- predict(lin, data.frame(X[,-1]))
+
+# plot the residuals
+plot(lin$resid, ylab = "Residuals", main = "log(Y) model")
+abline(h = 0, lty = 2)
+plot(hat(X), ylab = "Leverages", main = "log(Y) model")
+abline(h = 2 * p / n, lty = 2)
+
+par(mfrow = c(1, 2), font.main = 1)
+plot(Y, Yp, xlab = "Y", ylab = "Predicted value", main = "Normal model")
+abline(a = 0, b = 1)
+plot(log(Y), pred_lin, xlab = "log(Y)", ylab = "Predicted value", main = "log(Y) model")
+abline(a = 0, b = 1)
+```
+
+The transformation seemingly diminishes the discrepancy between the fitted and observed data. The largest residual in the $\log(Y)$ model is due to the data point being equal to one, and thus $\log(Y) = 0$ which ends up far from the other observations.
+
+## Exercise 2
+
+We use the ''Mr October'' data (Section 2.4) $Y_1 = 563$, $N_1 = 2820$, $Y_2 = 10$ and $N_2 = 27$. Compare the two models
+
+$$
+\begin{align*}
+    &\mathcal M_1: Y_1 | \lambda_1 \sim \mathrm{Poisson}(N_1\lambda_1) \quad \text{and} \quad Y_2 | \lambda_2 \sim \mathrm{Poisson}(N_2\lambda_2) \\
+    &\mathcal M_2: Y_1 | \lambda_0 \sim \mathrm{Poisson}(N_1\lambda_0) \quad \text{and} \quad Y_2 | \lambda_0 \sim \mathrm{Poisson}(N_2\lambda_0)
+\end{align*}
+$$
+
+using Bayes factors, DIC and WAIC. Assume the $\mathrm{Uniform}(0, c)$ prior for all $\lambda_j$ and compare the results for $c = 1$ and $c = 10$.
+
+### Solution
+
+To recap briefly, the data are the total number of games played and number of home runs in regular-season games as well as world series for the American baseball player Reggie Jackson ("Mr. October").
+
+We denote by $Y_1$ and $N_1$ the number of home runs and total number of games in the regular season. World series data are analogously labelled $Y_2$ and $N_2$. In this exercise, we are competing two models $\mathcal{M}_1$ and $\mathcal{M}_2$, where the first model claims that the rate of home runs is different when the player is competing in the World Series or Regular-Season. The latter model claims that there is no difference. Since we will be repeating the same analyses quite a bit, it is convenient to declare a function which automates this process.
+
+```{r}
+# Mr. October data
+N <- c(2820, 27)
+Y <- c(563,  10)
+
+# Model parameters
+p  <- 2
+n  <- 2
+
+# Model strings
+str_october_1 <- "model{
+  for (i in 1:n) {
+    Y[i]     ~ dpois(N[i] * lambda[i])
+    like[i] <- dpois(Y[i], N[i] * lambda[i])
+  }
+  
+  for (j in 1:p) { lambda[j] ~ dunif(0, c) }
+}"
+
+str_october_2 <- "model{
+  for (i in 1:n) {
+    Y[i]     ~ dpois(N[i] * lambda)
+    like[i] <- dpois(Y[i], N[i] * lambda)
+  }
+  
+  lambda ~ dunif(0, c)
+}"
+
+models_october <- c(str_october_1, str_october_2)
+
+# Custom print function for information criterion
+print_ic <- function(IC, P) {
+  if(class(IC) == "mcarray") { 
+    IC <- sum(IC)
+    P  <- sum(P)
+  }
+  cat(paste("- Mean deviance     :", signif(IC, 3), "\n"))
+  cat(paste("- Penalty           :", signif(P, 3), "\n"))
+  cat(paste("- Penalised deviance:", signif(IC + P, 3), "\n"))
+}
+
+# Automates modelling process
+mcmc_october <- function(model_no, c, params) {
+  init_october <- textConnection(models_october[model_no])
+
+  data <- list(N = N, Y = Y, c = c, n = n, p = p)
+  if (model_no == 2) data <- data[-5]
+
+  model_october <- jags.model(init_october, data = data, 
+                              n.chains = 2, quiet = TRUE)
+
+  update(model_october, n.iter = 1e+4, progress.bar = "none")
+
+  DIC     <- dic.samples(model_october, n.iter = 5e+4, progress.bar = "none")
+  
+  samples <- coda.samples(model_october, variable.names = c("like"),
+                          n.iter = 2e+4, progress.bar = "none")
+  
+  like  <- rbind(samples[[1]], samples[[2]])
+  L_bar <- colMeans(like)
+
+  Pw <- sum(apply(log(like), 2, var))
+  WAIC <- -2 * sum(log(L_bar)) + 2 * Pw
+  
+  cat(paste0("MODEL: ", model_no, ", C: ", c, "\n"))
+  cat("==========================\n")
+  cat("WAIC\n")
+  print_ic(WAIC, Pw)
+  cat("\n")
+  cat("DIC\n")
+  print_ic(DIC$deviance, DIC$penalty)
+  cat("==========================\n\n")
+}
+```
+
+Notice that since we have no basis for placing unequal priors on the models $\mathcal{M}_1$ and $\mathcal{M}_2$, the Bayes factor is simply the ratio of the likelihood of given the data:
+
+$$
+\newcommand{\lhf}{\mathcal{L}}
+\text{BF}(\mathbf Y) 
+= \frac{\lhf_{\mathcal M_1} (\mathbf Y | \boldsymbol\lambda, \mathbf N)}{\lhf_{\mathcal M_2}(\mathbf Y | \boldsymbol\lambda, \mathbf N)}
+= \frac{\lhf(Y_1 | \boldsymbol\lambda, \mathbf N) \lhf(Y_2 | \boldsymbol\lambda, \mathbf N)}{\lhf(Y_1 | \boldsymbol\lambda, \mathbf N) \lhf(Y_2 | \boldsymbol\lambda, \mathbf N)}
+= \frac{\lhf(Y_1 | \lambda_1, N_1) \lhf(Y_2 | \lambda_2, N_2)}{\lhf(Y_1 | \lambda_0, N_1) \lhf(Y_2 | \lambda_0, N_2)}
+$$
+
+which after some calculation can be shown to equal
+
+$$
+\text{BF}(\mathbf Y) = \frac{\lambda_1^{N_1} \lambda_2^{N_2}}{\lambda_0^{N_1 + N_2}} \exp(2\lambda_0 - \lambda_1 - \lambda_2)
+$$

@@ -35,6 +35,9 @@ names <- c("(Intercept)", colnames(Boston)[1:p - 1])
 rownames(sum_uninf$statistics) <- names
 rownames(sum_uninf$quantiles)  <- names
 
+pdf("ex2-jags-uninf.pdf")
+plot(samples_uninf)
+dev.off()
 
 
 
@@ -79,9 +82,10 @@ model_init_lasso <- textConnection("model{
 }")
 
 model_lasso <- jags.model(model_init_lasso, data = data, n.chains = 2, quiet = TRUE)
-update(model_lasso, 1e+4)
+update(model_lasso, 1e+4, progress.bar = "none")
 
-samples_lasso <- coda.samples(model_lasso, variable.names = c("beta"), n.iter = 2e+4)
+samples_lasso <- coda.samples(model_lasso, variable.names = c("beta"), 
+                              progress.bar = "none", n.iter = 2e+4)
 
 sum_lasso <- summary(samples_lasso)
 rownames(sum_lasso$statistics) <- names
@@ -90,6 +94,10 @@ rownames(sum_lasso$quantiles)  <- names
 dat <- as.data.frame(cbind(0:13, sum_uninf$statistics[,c(1,2)], sum_lasso$statistics[,c(1,2)]))
 rownames(dat) <- NULL
 colnames(dat) <- c("beta", "blr_beta", "blr_sd", "blasso_beta", "blasso_sd")
+
+pdf("ex2-jags-lasso.pdf")
+plot(samples_lasso)
+dev.off()
 
 pdf("ex2-estimates-lasso-blr.pdf", width = 12)
 plot(dat$beta - sep, dat$blr_beta, pch = 21, xlab = "Covariate", xaxt = "none", ylab = "Estimate")
