@@ -241,10 +241,13 @@ mcmc_october <- function(model_no, c, params) {
 
   DIC     <- dic.samples(model_october, n.iter = 5e+4, progress.bar = "none")
   
-  samples <- coda.samples(model_october, variable.names = c("like"),
+  samples <- coda.samples(model_october, variable.names = c("like", "lambda"),
                           n.iter = 2e+4, progress.bar = "none")
   
-  like  <- rbind(samples[[1]], samples[[2]])
+  likes <- 2:3; lambdas <- 1
+  if (model_no == 1) { likes <- 3:4; lambdas <- 1:2 }
+    
+  like  <- rbind(samples[[1]][,likes], samples[[2]][,likes])
   L_bar <- colMeans(like)
 
   Pw <- sum(apply(log(like), 2, var))
@@ -258,6 +261,9 @@ mcmc_october <- function(model_no, c, params) {
   cat("DIC\n")
   print_ic(DIC$deviance, DIC$penalty)
   cat("==========================\n\n")
+  
+  if (model_no == 2)
+  return(append(samples[[1]][,lambdas], samples[[2]][,lambdas]))
 }
 ```
 
@@ -275,4 +281,9 @@ which after some calculation can be shown to equal
 
 $$
 \text{BF}(\mathbf Y) = \frac{\lambda_1^{N_1} \lambda_2^{N_2}}{\lambda_0^{N_1 + N_2}} \exp(2\lambda_0 - \lambda_1 - \lambda_2)
-$$
+$$We can obtain an approximate estimate by taking the posterior mean from the MCMC chain returned by the \`mcmc_october\` function.
+
+```{r}
+lambda12 <- mcmc_october(1, 1)
+lambda0  <- mcmc_october(2, 1)
+```
