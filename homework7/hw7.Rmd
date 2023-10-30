@@ -4,7 +4,7 @@ author: "Kári Hlynsson"
 output: html_document
 ---
 
-```{r setup, include=FALSE, message = FALSE}
+```{r setup, include=FALSE, message = FALSE, warnings = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -12,8 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(rjags)
-library(latex2exp)
 library(knitr)
+library(latex2exp)
 ```
 
 ## Exercise 1
@@ -241,13 +241,11 @@ mcmc_october <- function(model_no, c, params) {
 
   DIC     <- dic.samples(model_october, n.iter = 5e+4, progress.bar = "none")
   
-  samples <- coda.samples(model_october, variable.names = c("like", "lambda"),
+  samples <- coda.samples(model_october, variable.names = c("like"),
                           n.iter = 2e+4, progress.bar = "none")
   
-  likes <- 2:3; lambdas <- 1
-  if (model_no == 1) { likes <- 3:4; lambdas <- 1:2 }
-    
-  like  <- rbind(samples[[1]][,likes], samples[[2]][,likes])
+  
+  like  <- rbind(samples[[1]], samples[[2]])
   L_bar <- colMeans(like)
 
   Pw <- sum(apply(log(like), 2, var))
@@ -261,29 +259,27 @@ mcmc_october <- function(model_no, c, params) {
   cat("DIC\n")
   print_ic(DIC$deviance, DIC$penalty)
   cat("==========================\n\n")
-  
-  if (model_no == 2)
-  return(append(samples[[1]][,lambdas], samples[[2]][,lambdas]))
 }
 ```
 
-Notice that since we have no basis for placing unequal priors on the models $\mathcal{M}_1$ and $\mathcal{M}_2$, the Bayes factor is simply the ratio of the likelihood of given the data:
-
-$$
-\newcommand{\lhf}{\mathcal{L}}
-\text{BF}(\mathbf Y) 
-= \frac{\lhf_{\mathcal M_1} (\mathbf Y | \boldsymbol\lambda, \mathbf N)}{\lhf_{\mathcal M_2}(\mathbf Y | \boldsymbol\lambda, \mathbf N)}
-= \frac{\lhf(Y_1 | \boldsymbol\lambda, \mathbf N) \lhf(Y_2 | \boldsymbol\lambda, \mathbf N)}{\lhf(Y_1 | \boldsymbol\lambda, \mathbf N) \lhf(Y_2 | \boldsymbol\lambda, \mathbf N)}
-= \frac{\lhf(Y_1 | \lambda_1, N_1) \lhf(Y_2 | \lambda_2, N_2)}{\lhf(Y_1 | \lambda_0, N_1) \lhf(Y_2 | \lambda_0, N_2)}
-$$
-
-which after some calculation can be shown to equal
-
-$$
-\text{BF}(\mathbf Y) = \frac{\lambda_1^{N_1} \lambda_2^{N_2}}{\lambda_0^{N_1 + N_2}} \exp(2\lambda_0 - \lambda_1 - \lambda_2)
-$$We can obtain an approximate estimate by taking the posterior mean from the MCMC chain returned by the \`mcmc_october\` function.
+Running the above function for the models $\mathcal{M}_1$ and $\mathcal{M}_2$ with $c = 1$ yields the result shown below:
 
 ```{r}
-lambda12 <- mcmc_october(1, 1)
-lambda0  <- mcmc_october(2, 1)
+mcmc_october(model_no = 1, c = 1)
+mcmc_october(model_no = 2, c = 1)
 ```
+
+Judging from the above output $\mathcal{M}_1$ seems to be the preferable model, since both the $\textit{DIC}$ and $\textit{WAIC}$ agree.
+
+```{r}
+BF <- function(Y1, Y2, c) {
+  numer <- factorial(Y1 + 1) * factorial(Y2 + 1) * 2^(Y1 + Y2 + 1) 
+  denom <- factorial(Y1 + Y2 + 1)
+}
+```
+
+We encounter a problem evaluating this numerically...
+
+## Exercise 3
+
+Njaaaaaawwrrrrrrrrrrrrrrrrrrrrrr
