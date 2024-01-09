@@ -1,0 +1,12 @@
+base
+methods
+datasets
+utils
+grDevices
+graphics
+stats
+coda
+rjags
+knitr
+latex2exp
+MASS
